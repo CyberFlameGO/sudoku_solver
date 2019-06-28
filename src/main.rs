@@ -5,6 +5,7 @@ use std::io::Read;
 use crossbeam_channel::{unbounded, Sender};
 
 use itertools::Itertools;
+use std::time::Instant;
 
 const ROWS: [[usize; 9]; 9] = [[00, 01, 02, 03, 04, 05, 06, 07, 08],
                                [09, 10, 11, 12, 13, 14, 15, 16, 17],
@@ -75,7 +76,11 @@ fn main() {
 
     let board = Board::try_from_str(&buf).expect("bad puzzle");
 
+    let start = Instant::now();
     pool.scope(|scope| process_board(board, completed_tx, scope));
+    let duration = start.elapsed();
+
+    println!("Process complete. Operation took {} seconds", duration.as_secs());
 
     let mut solved_boards = Vec::new();
     let mut failed_boards = Vec::new();
