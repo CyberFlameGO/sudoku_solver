@@ -77,19 +77,25 @@ fn main() {
 
     let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
 
+    // Deserialize puzzle from raw format
     let board = Board::try_from_str(&buf).expect("bad puzzle");
 
+    // Start threaded processing. Grabbing Instant for duration
     let start = Instant::now();
     pool.scope(|scope| process_board(board, completed_tx, scope));
     let duration = start.elapsed();
 
     println!("Process complete. Operation took {} seconds", duration.as_secs());
 
+    // This method is an easier to debug version of process_board,
+    //     being single-threaded and synchronous
+    //
     // debug_process_board(board, completed_tx);
 
     let mut solved_boards = Vec::new();
     let mut failed_boards = Vec::new();
 
+    // Dequeue the channel, process results
     while let Ok(res) = completed_rx.recv() {
         match res {
             BoardResult::Solved(b) => solved_boards.push(b),
@@ -106,24 +112,30 @@ fn process_board(board: Board, completed_tx: Sender<BoardResult>, scope: &rayon:
     use BoardResult::*;
     match board.try_solve() {
         Solved(b) => {
+            // Solved boards are what we want, send them forward
             completed_tx.send(Solved(b)).expect("completed_rx disposed?");
         }
         Failed(b) => {
+            // Failed boards can't be used anymore, send them forward
             completed_tx.send(Failed(b)).expect("completed_rx disposed?");
         }
         Branch(boards) => boards
             .into_iter()
-            .for_each(|b| {
+            .for_each(|b| {  // Branch out and explore new permutations!
                 let completed_tx = completed_tx.clone();
+                // Recursion!
                 scope.spawn(|scope| process_board(b, completed_tx, scope))
             }),
     };
 }
 
 fn debug_process_board(board: Board, completed_tx: Sender<BoardResult>) {
-//    println!("Starting new board. Hit enter to continue.");
-//    { std::io::stdin().read_line(&mut String::new()); }
+    //  Because breakpoints are hard
+    //
+    //  println!("Starting new board. Hit enter to continue.");
+    //  { std::io::stdin().read_line(&mut String::new()); }
 
+    //  See comments on non-debug version
     use BoardResult::*;
     match board.try_solve() {
         Solved(b) => {
@@ -143,34 +155,38 @@ fn debug_process_board(board: Board, completed_tx: Sender<BoardResult>) {
 
 #[derive(Clone)]
 pub struct Board {
-    tiles: [Tile; 81],
+    tiles: [Tile; 81], // All tiles on the board, left to right, top to bottom
 }
 
 #[derive(Clone, Copy)]
 pub struct Tile {
     pub index: u8,
-    pub value: Option<u8>,
-    pub hints: [bool; 9],
+    pub value: Option<u8>, // what the Tile *is*
+    pub hints: [bool; 9],  // what the Tile *could potentially* be
 }
 
 impl Board {
     pub fn try_from_str(src: &str) -> Result<Board, String> {
+        // Preallocate array to return as part of Board
         let mut tiles= [Tile::default(); 81];
 
-
-        let collected = src.lines()
-            .filter(|s| !s.is_empty())
+        // Horray for monads?
+        let collected = src.lines() // Split by lines
+            .filter(|s| !s.is_empty()) // skip empty lines
             .flat_map(|content| {
                 let mut index = 0u8;
                 content.chars()
                     .filter(|c| {
                         match c {
-                            '0'..='9' => true,
+                            '0'..='9' => true, // we only care about the numerical cells
                             _ => false,
                         }
                     })
                     .map(move |c| {
-                        let value = char_to_maxnine(c);
+                        let value = char_to_maxnine(c); // get our Option<u8>
+                        // And set the hints appropriately
+                        // If it has a value, it should only have that value in the hints
+                        // If it doesn't have a value, it should be open to all values... to start
                         let hints = match &value {
                             Some(v) => {
                                 let mut h = [false; 9];
@@ -180,6 +196,7 @@ impl Board {
                             None => [true; 9],
                         };
 
+                        // Hack to get around not being able to set it after returning the Tile
                         index += 1;
 
                         Tile {
@@ -190,52 +207,64 @@ impl Board {
                     })
             });
 
+        // should be exactly 81 tiles on a Sudoku board
         if tiles.len() != 81 {
             return Err(String::from("More than 81 tiles collected"))
         }
 
+        // Insert into our array
         collected.for_each(|t| tiles[t.index as usize] = t);
 
+        // Off it goes
         Ok(Board { tiles })
     }
 
     pub fn try_solve(mut self) -> BoardResult {
+        // If this is true, an iteration did work in reducing the hints and/or setting values
         let mut progress;
 
+        // Debug information
         let mut iteration = 1u32;
         loop {
+            // set to false for default
             progress = false;
 //            println!("Iteration {}", iteration);
             iteration += 1;
 
+            // iterate over tiles, begin work
             for tile_index in 0..self.tiles.len() {
 //                println!("Tile {} hints: {:?}", tile_index, self.tiles[tile_index].hints);
 //                println!("Tile {} influences: {:?}", tile_index, get_influences(tile_index));
+                // tiles with values are done
                 if let Some(v) = self.tiles[tile_index].value {
 //                    println!("Skipping tile, has value {}", v);
                     continue;
                 }
 
+                // check all the tiles that might influence this current tile
                 for inf in get_influences(tile_index as u8) {
                     match self.tiles[inf as usize].value {
-                        Some(v) => {
+                        Some(v) => { // if the influence has a value, make sure our tile can't have it
                             let hint = &mut self.tiles[tile_index].hints[v as usize];
                             if *hint {
                                 *hint = false;
 
-//                                println!("PROGRESS!! Tile {}'s hint value {} cleared", tile_index, v);
+                                // Eliminating a possibility is progress
+                                // println!("PROGRESS!! Tile {}'s hint value {} cleared", tile_index, v);
                                 progress = true;
                             }
                         }
-                        None => {},
+                        None => {}, // No value, no influence
                     }
                 }
 
+                // We've checked all the influences over this tile, lets see if we
+                // reduced enough
                 let hints = self.tiles[tile_index].hints.iter()
                     .filter(|h| **h).count();
 
                 match hints {
-                    1 => {
+                    1 => { // right on the money, this is a value
                         let val = self.tiles[tile_index].hints.iter()
                             .position(|h| *h).map(|v| v as u8);
 
@@ -245,20 +274,28 @@ impl Board {
 
                         progress = true;
                     }
-                    0 =>  {
+                    0 =>  { // Too far! This must be a bad board
 //                        println!("Tile with 0 hints remaining encountered. This board is failed.");
                         return BoardResult::Failed(self)
                     },
-                    _ => {},
+                    _ => {}, // any more than 1, and there's still work to do
                 }
-            }
+            } // end tile iteration
 
+            // if there was no progress, this iteration, there will be no progress next iteration
             if progress == false {
 //                println!("Iteration {} had no progress, evaluating state", iteration);
                 break;
             }
         }
 
+        // We're done iterating, let's see what this means
+        //
+        // If all the tiles have values, it's solved!
+        //
+        // If not, we need to branch. Pick the first tile without a value,
+        // clone the board for each remaining hint, set each hint as a value
+        // on one board each, and submit them all as possible permutations.
         match self.tiles.iter().all(|t| t.value.is_some()) {
             true => {
                 println!("BOARD SOLVED!!");
