@@ -1,4 +1,4 @@
-#![feature(const_fn)]
+// #![feature(const_fn)]
 
 use std::fs::File;
 use std::io::Read;
@@ -180,7 +180,7 @@ impl Board {
             for tile_index in 0..self.tiles.len() {
                 //println!("Tile {} hints: {:?}", tile_index, self.tiles[tile_index].hints);
                 //println!("Tile {} influences: {:?}", tile_index, get_influences(tile_index));
-                if let Some(v) = self.tiles[tile_index].value {
+                if let Some(_) = self.tiles[tile_index].value {
                     continue;
                 }
 
