@@ -202,16 +202,17 @@ impl Board {
     pub fn try_solve(mut self) -> BoardResult {
         let mut progress;
 
-        // let mut iteration = 1u64;
+        let mut iteration = 1u32;
         loop {
             progress = false;
-            // println!("Iteration {}", iteration);
-            // iteration += 1;
+//            println!("Iteration {}", iteration);
+            iteration += 1;
 
             for tile_index in 0..self.tiles.len() {
-                //println!("Tile {} hints: {:?}", tile_index, self.tiles[tile_index].hints);
-                //println!("Tile {} influences: {:?}", tile_index, get_influences(tile_index));
-                if let Some(_) = self.tiles[tile_index].value {
+//                println!("Tile {} hints: {:?}", tile_index, self.tiles[tile_index].hints);
+//                println!("Tile {} influences: {:?}", tile_index, get_influences(tile_index));
+                if let Some(v) = self.tiles[tile_index].value {
+//                    println!("Skipping tile, has value {}", v);
                     continue;
                 }
 
@@ -222,7 +223,7 @@ impl Board {
                             if *hint {
                                 *hint = false;
 
-                                println!("PROGRESS!! Tile {}'s hint value {} cleared", tile_index, v);
+//                                println!("PROGRESS!! Tile {}'s hint value {} cleared", tile_index, v);
                                 progress = true;
                             }
                         }
@@ -240,16 +241,20 @@ impl Board {
 
                         self.tiles[tile_index].value = val.clone();
 
-                        // println!("PROGRESS!! Tile {} assigned {}", tile_index, val.unwrap());
+//                        println!("PROGRESS!! Tile {} assigned {}", tile_index, val.unwrap());
 
                         progress = true;
                     }
-                    0 => return BoardResult::Failed(self),
+                    0 =>  {
+//                        println!("Tile with 0 hints remaining encountered. This board is failed.");
+                        return BoardResult::Failed(self)
+                    },
                     _ => {},
                 }
             }
 
             if progress == false {
+//                println!("Iteration {} had no progress, evaluating state", iteration);
                 break;
             }
         }
@@ -260,15 +265,16 @@ impl Board {
                 BoardResult::Solved(self)
             },
             false => {
+//                println!("Board not solved. Branching.");
                 let branchtile = self.tiles.iter()
                     .find(|t| t.value.is_none()).unwrap();
-
-                println!("Branching on Tile {} for possibilities {:?}", branchtile.index, branchtile.hints);
 
                 let mut branches = Vec::new();
 
                 for (i, h) in branchtile.hints.iter().enumerate() {
                     if !h { continue; }
+
+//                    println!("Branching on Tile {} for Value {}", branchtile.index, i);
 
                     let mut branch = self.clone();
 
