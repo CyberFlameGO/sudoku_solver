@@ -85,6 +85,8 @@ fn main() {
 
     println!("Process complete. Operation took {} seconds", duration.as_secs());
 
+    // debug_process_board(board, completed_tx);
+
     let mut solved_boards = Vec::new();
     let mut failed_boards = Vec::new();
 
@@ -116,6 +118,27 @@ fn process_board(board: Board, completed_tx: Sender<BoardResult>, scope: &rayon:
                 scope.spawn(|scope| process_board(b, completed_tx, scope))
             }),
     };
+}
+
+fn debug_process_board(board: Board, completed_tx: Sender<BoardResult>) {
+//    println!("Starting new board. Hit enter to continue.");
+//    { std::io::stdin().read_line(&mut String::new()); }
+
+    use BoardResult::*;
+    match board.try_solve() {
+        Solved(b) => {
+            completed_tx.send(Solved(b)).expect("completed_rx disposed?");
+        }
+        Failed(b) => {
+            completed_tx.send(Failed(b)).expect("completed_rx disposed?");
+        }
+        Branch(boards) => boards
+            .into_iter()
+            .for_each(|b| {
+                let completed_tx = completed_tx.clone();
+                debug_process_board(b, completed_tx)
+            })
+    }
 }
 
 #[derive(Clone)]
