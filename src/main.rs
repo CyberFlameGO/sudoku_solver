@@ -72,7 +72,10 @@ fn main() {
 
     let (completed_tx, completed_rx) = unbounded();
 
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().unwrap();
+    let threads = usize::from_str(std::env::var("RUST_SUDOKU_THREADS")
+        .unwrap_or(String::from("8")).as_str()).unwrap();
+
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
 
     let board = Board::try_from_str(&buf).expect("bad puzzle");
 
